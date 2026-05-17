@@ -9,113 +9,156 @@ from ..config import get_settings_lazy
 
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
+# Proyectos activos por usuario: {user_id: proyecto_id}
+proyectos_activos: dict[int, int] = {}
+
+
+def get_proyecto(user_id: int) -> int:
+    """Obtiene el proyecto activo de un usuario."""
+    return proyectos_activos.get(user_id, 1)
+
+
+def set_proyecto(user_id: int, proyecto_id: int):
+    """Cambia el proyecto activo de un usuario."""
+    proyectos_activos[user_id] = proyecto_id
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Handler /start."""
+    """Handler /start."""
     await update.message.reply_text(
         "🏗️ *RAG-Obras Bot*\n\n"
         "Consulta el manual de obra desde campo.\n"
         "Enviame tu pregunta en lenguaje natural.\n\n"
+        "Comandos:\n"
+        "/start - Iniciar\n"
+        "/proyecto <id> - Cambiar proyecto\n"
+        "/proyecto - Ver proyecto actual\n"
+        "/ayuda - Ayuda\n\n"
         "Ej: Como se hace el revoque exterior?",
         parse_mode="Markdown"
     )
 
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Handler /help."""
+async def ayuda(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler /ayuda."""
     await update.message.reply_text(
         "📖 *Ayuda*\n\n"
-        "Enviame cualquier pregunta sobre el proyecto.\n"
+        "Enviame tu pregunta sobre el proyecto.\n"
         "Te respondo con información de los documentos.\n\n"
-        "/start - Iniciar\n"
-        "/logs - Ver últimas consultas",
+        "*Comandos:*\n"
+        "/start - Bienvenida\n"
+        "/proyecto <id> - Cambiar proyecto\n"
+        "/proyecto - Ver proyecto actual",
         parse_mode="Markdown"
     )
 
 
-async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler /logs - mostrar últimas consultas."""
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"{API_URL}/logs", params={"limit": 5})
-            if response.status_code == 200:
-                data = response.json()
-                if not data:
-                    await update.message.reply_text("No hay consultas registradas.")
-                    return
-                
-                msg = "📋 *Últimas consultas:*\n\n"
-                for item in data:
-                    msg += f"• {item['mensaje_original'][:50]}...\n"
-                    msg += f"  Score: {item['score_maximo']:.2f}\n\n"
-                
-                await update.message.reply_text(msg, parse_mode="Markdown")
-            else:
-                await update.message.reply_text("Error al obtener logs.")
-    except Exception as e:
-        await update.message.reply_text(f"Error: {e}")
+async def proyecto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler /proyecto - ver o cambiar proyecto."""
+    user_id = update.message.from_user.id
+    args = context.args
+
+    if args:
+        # Cambiar proyecto
+        try:
+            proyecto_id = int(args[0])
+            set_proyecto(user_id, proyecto_id)
+            await update.message.reply_text(f"✅ Proyecto cambiado a {proyecto_id}")
+        except ValueError:
+            await update.message.reply_text("❌ ID de proyecto inválido. Uso: /proyecto <id>")
+    else:
+        # Mostrar proyecto actual
+        actual = get_proyecto(user_id)
+        await update.message.reply_text(f"📁 Proyecto activo: {actual}")
 
 
 async def handle_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """ Handler mensajes - consulta a la API."""
+    """Handler mensajes - consulta a la API."""
     mensaje = update.message.text
-    user = update.message.from_user.username or update.message.from_user.first_name or "unknown"
+    user = update.message.from_user
+    user_id = user.id
+    username = user.username or user.first_name or "unknown"
 
-    # Confirmar que recibió el mensaje
+    proyecto_id = get_proyecto(user_id)
+
     await update.message.reply_text("🔎 Buscando en los documentos...")
 
     try:
-        # Llamar a la API
         async with httpx.AsyncClient(timeout=30.0) as client:
+            # 1. Consultar API
             response = await client.post(
                 f"{API_URL}/query",
                 json={
-                    "proyecto_id": 1,  # Por ahora hardcodeado
+                    "proyecto_id": proyecto_id,
                     "mensaje": mensaje,
-                    "usuario_telegram": user,
+                    "usuario_telegram": username,
                 }
             )
 
             if response.status_code != 200:
-                await update.message.reply_text("❌ Error al procesar consulta. Intenta más tarde.")
+                await update.message.reply_text("❌ Error al procesar. Intenta más tarde.")
                 return
 
             data = response.json()
-
-            # Responder con el texto
             respuesta = data.get("respuesta", "No encontré información.")
-            await update.message.reply_text(respuesta)
+            score = data.get("score_maximo", 0.0)
 
-            # Si tiene imagen, enviar como foto
+            # 2. Si tiene imagen, obtener URL firmada
+            img_bytes = None
             if data.get("tiene_imagen") and data.get("ruta_imagen"):
                 try:
-                    # Obtener URL pública de la imagen
-                    img_response = await client.get(
-                        f"{API_URL}/storage/documentos/{data['ruta_imagen']}"
+                    url_resp = await client.get(
+                        f"{API_URL}/storage/url",
+                        params={"path": data["ruta_imagen"]}
                     )
-                    if img_response.status_code == 200:
-                        await update.message.reply_photo(img_response.content)
-                except:
-                    pass  # Si falla, no es crítico
+                    if url_resp.status_code == 200:
+                        signed_url = url_resp.json().get("url")
+                        if signed_url:
+                            img_download = await client.get(signed_url)
+                            if img_download.status_code == 200:
+                                img_bytes = img_download.content
+                except Exception as e:
+                    print(f"Error descargando imagen: {e}")
+
+            # 3. Formatear respuesta
+            score_pct = int(score * 100)
+            relevancia = f"📊 Relevancia: {score_pct}%"
+
+            if score < 0.4:
+                respuesta = "⚠️ No encontré documentación específica sobre esto."
+                relevancia = ""
+
+            await update.message.reply_text(respuesta)
+
+            if relevancia:
+                await update.message.reply_text(relevancia)
+
+            # 4. Enviar imagen si hay
+            if img_bytes:
+                await update.message.reply_photo(img_bytes)
 
     except httpx.TimeoutException:
         await update.message.reply_text("⏱️ Tiempo de espera agotado. Intenta más tarde.")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {str(e)[:100]}")
+        print(f"ERROR en handle_query: {e}")
+        await update.message.reply_text("❌ Error al procesar consulta. Intenta más tarde.")
 
 
 def main():
-    """ Iniciar el bot."""
+    """Iniciar el bot."""
     settings = get_settings_lazy()
-    
+
+    if not settings.telegram_bot_token:
+        print("ERROR: TELEGRAM_BOT_TOKEN no configurado")
+        return
+
     app = Application.builder().token(settings.telegram_bot_token).build()
 
     # Handlers
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("logs", logs_command))
+    app.add_handler(CommandHandler("ayuda", ayuda))
+    app.add_handler(CommandHandler("proyecto", proyecto_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_query))
 
-    # Polling
     print("🤖 Bot arrancado...")
     app.run_polling()
