@@ -5,11 +5,12 @@ from .retriever import ChunkRecuperado
 def construir_prompt(
     query: str,
     chunks: list[ChunkRecuperado],
-    score_umbral: float = 1.2,
+    score_umbral: float = 0.6,
 ) -> tuple[str, bool]:
     """
     Construye el prompt para MiniMax.
     Retorna (prompt_str, contexto_pobre).
+    score_umbral=0.6 (distancia coseno: menor = mejor match)
     """
     contexto_pobre = not chunks or (chunks[0].score > score_umbral)
 
@@ -27,24 +28,25 @@ def construir_prompt(
 
     contexto = "\n\n".join(contexto_parts)
 
-    # Prompt base
+    # ADVERTENCIA antes de CONTEXTO si contexto pobre
+    advertencia = ""
+    if contexto_pobre:
+        advertencia = (
+            "\nADVERTENCIA: Los documentos disponibles pueden no contener información específica sobre esta consulta.\n"
+        )
+
+    # Prompt con ADVERTENCIA antes de CONTEXTO
     prompt = f"""Sos un asistente técnico de obra. Respondé ÚNICAMENTE usando la información
 del contexto. Si la información no está en el contexto, decí exactamente:
 "No encontré información sobre esto en los documentos disponibles."
 No inventes datos, medidas, procedimientos ni normativas.
-
+{advertencia}
 CONTEXTO:
 {contexto}
 
 PREGUNTA: {query}
 
 RESPUESTA:
-"""
-
-    # Agregar warning si contexto pobre
-    if contexto_pobre:
-        prompt += """
-ADVERTENCIA: Los documentos disponibles pueden no contener información específica sobre esta consulta.
 """
 
     return prompt, contexto_pobre

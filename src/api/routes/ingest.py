@@ -4,8 +4,14 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from supabase import Client
 
-from ..schemas import IngestResponse, ErrorResponse
-from ...ingesta import extraer, chunkear, embeder_y_guardar, DocumentoExtraido
+from ..schemas import IngestResponse
+from ...ingesta import (
+    extraer,
+    chunkear,
+    embeder_y_guardar,
+    DocumentoExtraido,
+    Chunk,
+)
 from ...config import get_settings_lazy
 from ...db import get_client
 
@@ -27,10 +33,9 @@ async def ingest_doc(
     Orchestras el pipeline de ingesta:
     1. Guarda en Storage
     2. Extrae texto
-    3. Chunkea
+    3. Chunkea / chunk sintético si es imagen
     4. Embedder + guardado
     """
-    # Validar tipo
     if tipo not in TIPOS_VALIDOS:
         raise HTTPException(422, f"Tipo inválido. Usar: {', '.join(TIPOS_VALIDOS)}")
 
@@ -38,8 +43,9 @@ async def ingest_doc(
     supabase_client: Client = get_client()
     bucket_name = "documentos"
 
+    tmp_path = None
     try:
-        # 1. Guardar archivo temporalmente (con extensión para que extraer() detecte el tipo)
+        # 1. Guardar archivo temporalmente
         suffix = Path(nombre).suffix
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             contenido = await archivo.read()
@@ -85,13 +91,28 @@ async def ingest_doc(
             chunks = chunkear(extractor_result.texto, metadata_base)
             chunks_generados = embeder_y_guardar(chunks, documento_id, proyecto_id)
 
-            # 6. Actualizar texto_extraido en documentos
+            # Actualizar texto_extraido
             supabase_client.table("documentos").update(
                 {"texto_extraido": extractor_result.texto}
             ).eq("id", documento_id).execute()
-
-        # Limpiar tmp
-        Path(tmp_path).unlink()
+        else:
+            # Es imagen → crear chunk sintético con texto de búsqueda
+            texto_busqueda = f"Plano: {nombre}. Sector: {sector or 'general'}. Tipo: {tipo}."
+            chunk_sintetico = Chunk(
+                texto=texto_busqueda,
+                tokens=len(texto_busqueda.split()),
+                indice=0,
+                metadata={
+                    "documento_id": documento_id,
+                    "proyecto_id": proyecto_id,
+                    "tipo": tipo,
+                    "sector": sector or None,
+                    "nombre_documento": nombre,
+                    "es_imagen": True,
+                    "ruta_archivo": path_storage,
+                },
+            )
+            chunks_generados = embeder_y_guardar([chunk_sintetico], documento_id, proyecto_id)
 
         return IngestResponse(
             documento_id=documento_id,
@@ -102,4 +123,8 @@ async def ingest_doc(
         )
 
     except Exception as e:
-        raise HTTPException(500, str(e))
+        print(f"ERROR en /ingest: {e}")
+        raise HTTPException(500, "Error procesando el documento")
+    finally:
+        if tmp_path:
+            Path(tmp_path).unlink(missing_ok=True)

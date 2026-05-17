@@ -3,7 +3,7 @@ from openai import OpenAI
 from fastapi import APIRouter, HTTPException
 from supabase import Client
 
-from ..schemas import QueryRequest, QueryResponse, ErrorResponse
+from ..schemas import QueryRequest, QueryResponse
 from ...config import get_settings_lazy
 from ...db import get_client
 from ...rag import recuperar, construir_prompt, ChunkRecuperado
@@ -14,13 +14,11 @@ router = APIRouter(prefix="/query", tags=["query"])
 
 
 @router.post("", response_model=QueryResponse)
-async def query_doc(
-    request: QueryRequest,
-):
+async def query_doc(request: QueryRequest):
     """
     Pipeline query:
     1. Embedding del mensaje
-    2. Retrieval top-5
+    2. Retrieval top-5 (RPC SQL)
     3. Prompt builder
     4. MiniMax response
     5. Log en tabla consultas
@@ -37,7 +35,7 @@ async def query_doc(
         )
         query_embedding = embedding_response.data[0].embedding
 
-        # 2. Retrieval
+        # 2. Retrieval via RPC SQL
         chunks: list[ChunkRecuperado] = recuperar(
             query_embedding=query_embedding,
             proyecto_id=request.proyecto_id,
@@ -48,7 +46,7 @@ async def query_doc(
             return QueryResponse(
                 respuesta="No encontré documentos relevantes para esta consulta.",
                 chunks_usados=[],
-                score_maximo=2.0,
+                score_maximo=0.0,
                 contexto_pobre=True,
                 tiene_imagen=False,
                 ruta_imagen=None,
@@ -56,12 +54,15 @@ async def query_doc(
 
         # 3. Construir prompt
         prompt, contexto_pobre = construir_prompt(request.mensaje, chunks)
-        score_maximo = chunks[0].score
 
-        # 4. Responder con MiniMax
+        # 4. score como similitud (mayor = mejor)
+        distancia = chunks[0].score
+        score_maximo = 1.0 - distancia  # similitud: 1.0 = perfecto, 0.0 = sin relación
+
+        # 5. Responder con MiniMax
         respuesta_texto = responder(prompt, contexto_pobre)
 
-        # 5. Determinar si tiene imagen
+        # 6. Determinar si tiene imagen
         tiene_imagen = False
         ruta_imagen = None
         for chunk in chunks:
@@ -72,7 +73,7 @@ async def query_doc(
 
         chunks_usados = [c.chunk_id for c in chunks]
 
-        # 6. Log en consultas
+        # 7. Log en consultas (score como similitud)
         supabase_client.table("consultas").insert({
             "proyecto_id": request.proyecto_id,
             "usuario_telegram": request.usuario_telegram,
@@ -92,6 +93,8 @@ async def query_doc(
         )
 
     except RuntimeError as e:
-        raise HTTPException(500, str(e))
+        print(f"ERROR en /query (RuntimeError): {e}")
+        raise HTTPException(500, "Error procesando la solicitud")
     except Exception as e:
-        raise HTTPException(500, f"Error procesando consulta: {e}")
+        print(f"ERROR en /query: {e}")
+        raise HTTPException(500, "Error procesando la solicitud")
