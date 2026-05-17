@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - RAG-Obras</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        h1 { color: #1a1a1a; margin-bottom: 20px; }
+        
+        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card h2 { font-size: 16px; color: #333; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        
+        label { display: block; margin-bottom: 5px; font-size: 14px; color: #666; }
+        input, select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px; font-size: 14px; }
+        
+        .btn { background: #2563eb; color: #fff; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #1d4ed8; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        .btn-secondary { background: #4b5563; }
+        
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+        th { background: #f9f9f9; font-weight: 600; color: #666; }
+        
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        
+        .error { color: #dc3545; padding: 10px; background: #f8d7da; border-radius: 4px; margin-bottom: 15px; display: none; }
+        .success { color: #155724; padding: 10px; background: #d4edda; border-radius: 4px; margin-bottom: 15px; display: none; }
+        
+        .spinner { display: none; text-align: center; padding: 20px; }
+        .spinner::after { content: "⏳ Cargando..."; }
+        
+        .loading .spinner { display: block; }
+        .loading .content { opacity: 0.5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏗️ Admin RAG-Obras</h1>
+        
+        <!-- Selector de proyecto -->
+        <div class="card">
+            <h2>📁 Proyecto</h2>
+            <select id="proyecto-select">
+                <option value="">Seleccionar proyecto...</option>
+            </select>
+            <button class="btn btn-secondary" onclick="mostrarNuevoProyecto()">+ Nuevo proyecto</button>
+            
+            <div id="nuevo-proyecto-form" style="display:none; margin-top: 15px;">
+                <input type="text" id="nuevo-proyecto-nombre" placeholder="Nombre del proyecto">
+                <input type="text" id="nuevo-proyecto-desc" placeholder="Descripción (opcional)">
+                <button class="btn" onclick="crearProyecto()">Crear</button>
+            </div>
+        </div>
+        
+        <!-- Formulario de carga -->
+        <div class="card">
+            <h2>📤 Cargar documento</h2>
+            <div id="mensaje" class="error"></div>
+            <div id="mensaje-ok" class="success"></div>
+            
+            <form id="upload-form">
+                <label>Archivo (.pdf, .docx, .png, .jpg)</label>
+                <input type="file" id="archivo" accept=".pdf,.docx,.png,.jpg,.jpeg" required>
+                
+                <label>Nombre del documento</label>
+                <input type="text" id="nombre" placeholder="manual_seguridad.pdf" required>
+                
+                <label>Tipo</label>
+                <select id="tipo" required>
+                    <option value="">Seleccionar...</option>
+                    <option value="manual">Manual</option>
+                    <option value="especificacion">Especificación</option>
+                    <option value="plano">Plano</option>
+                    <option value="protocolo">Protocolo</option>
+                    <option value="cronograma">Cronograma</option>
+                </select>
+                
+                <label>Sector (opcional)</label>
+                <input type="text" id="sector" placeholder="norte, sur, etc.">
+                
+                <button type="submit" class="btn" id="btn-submit">Cargar documento</button>
+            </form>
+            <div id="spinner" class="spinner"></div>
+        </div>
+        
+        <!-- Lista de documentos -->
+        <div class="card">
+            <h2>📋 Documentos del proyecto</h2>
+            <button class="btn" onclick="cargarDocumentos()">Actualizar</button>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Tipo</th>
+                        <th>Sector</th>
+                        <th>Fecha</th>
+                        <th>Chunks</th>
+                        <th>Imagen</th>
+                    </tr>
+                </thead>
+                <tbody id="documentos-table">
+                    <tr><td colspan="6">Seleccione un proyecto</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = window.location.origin;
+        let proyectoId = null;
+        
+        // Cargar proyectos al inicio
+        fetch(API_URL + '/proyectos?activo=true')
+            .then(r => r.json())
+            .then(proyectos => {
+                const select = document.getElementById('proyecto-select');
+                proyectos.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.nombre;
+                    select.appendChild(opt);
+                });
+            })
+            .catch(e => console.error(e));
+        
+        // Seleccionar proyecto
+        document.getElementById('proyecto-select').addEventListener('change', function() {
+            proyectoId = this.value;
+            if (proyectoId) cargarDocumentos();
+        });
+        
+        // Mostrar formulario nuevo proyecto
+        function mostrarNuevoProyecto() {
+            document.getElementById('nuevo-proyecto-form').style.display = 'block';
+        }
+        
+        // Crear proyecto
+        function crearProyecto() {
+            const nombre = document.getElementById('nuevo-proyecto-nombre').value;
+            const desc = document.getElementById('nuevo-proyecto-desc').value;
+            
+            if (!nombre) {
+                alert('Ingrese nombre del proyecto');
+                return;
+            }
+            
+            fetch(API_URL + '/proyectos', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nombre: nombre, descripcion: desc})
+            })
+            .then(r => r.json())
+            .then(data => {
+                alert('Proyecto creado: ' + data.nombre);
+                location.reload();
+            })
+            .catch(e => alert('Error: ' + e));
+        }
+        
+        // Cargar documentos
+        function cargarDocumentos() {
+            if (!proyectoId) return;
+            
+            fetch(API_URL + '/documentos?proyecto_id=' + proyectoId)
+                .then(r => r.json())
+                .then(docs => {
+                    const tbody = document.getElementById('documentos-table');
+                    if (!docs.length) {
+                        tbody.innerHTML = '<tr><td colspan="6">No hay documentos</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = docs.map(d => {
+                        const fecha = d.fecha_carga ? d.fecha_carga.substring(0, 10) : '-';
+                        const esImg = d.ruta_archivo && (d.ruta_archivo.endsWith('.png') || d.ruta_archivo.endsWith('.jpg'));
+                        return '<tr>' +
+                            '<td>' + d.nombre + '</td>' +
+                            '<td>' + d.tipo + '</td>' +
+                            '<td>' + (d.sector || '-') + '</td>' +
+                            '<td>' + fecha + '</td>' +
+                            '<td>' + (d.chunks_count || 0) + '</td>' +
+                            '<td>' + (esImg ? '<span class="badge badge-warning">Sí</span>' : 'No') + '</td>' +
+                        '</tr>';
+                    }).join('');
+                })
+                .catch(e => console.error(e));
+        }
+        
+        // Submit formulario
+        document.getElementById('upload-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (!proyectoId) {
+                alert('Seleccione un proyecto');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('archivo', document.getElementById('archivo').files[0]);
+            formData.append('proyecto_id', proyectoId);
+            formData.append('nombre', document.getElementById('nombre').value);
+            formData.append('tipo', document.getElementById('tipo').value);
+            formData.append('sector', document.getElementById('sector').value);
+            
+            document.getElementById('btn-submit').disabled = true;
+            document.getElementById('spinner').style.display = 'block';
+            document.getElementById('mensaje').style.display = 'none';
+            document.getElementById('mensaje-ok').style.display = 'none';
+            
+            fetch(API_URL + '/ingest', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('mensaje-ok').textContent = '✅ Cargado: ' + data.nombre + ' — ' + data.chunks_generados + ' chunks';
+                document.getElementById('mensaje-ok').style.display = 'block';
+                cargarDocumentos();
+            })
+            .catch(e => {
+                document.getElementById('mensaje').textContent = 'Error al cargar: ' + e;
+                document.getElementById('mensaje').style.display = 'block';
+            })
+            .finally(() => {
+                document.getElementById('btn-submit').disabled = false;
+                document.getElementById('spinner').style.display = 'none';
+            });
+        });
+    </script>
+</body>
+</html>
