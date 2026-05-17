@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from supabase import Client
 
-from .schemas import IngestResponse, ErrorResponse
+from ..schemas import IngestResponse, ErrorResponse
 from ...ingesta import extraer, chunkear, embeder_y_guardar, DocumentoExtraido
 from ...config import get_settings_lazy
 from ...db import get_client
@@ -39,8 +39,9 @@ async def ingest_doc(
     bucket_name = "documentos"
 
     try:
-        # 1. Guardar archivo temporalmente
-        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+        # 1. Guardar archivo temporalmente (con extensión para que extraer() detecte el tipo)
+        suffix = Path(nombre).suffix
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             contenido = await archivo.read()
             tmp.write(contenido)
             tmp_path = tmp.name

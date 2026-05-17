@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query
 from supabase import Client
 
-from .schemas import LogResponse
+from ..schemas import LogResponse
 from ...db import get_client
 
 

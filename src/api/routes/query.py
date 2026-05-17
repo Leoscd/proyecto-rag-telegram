@@ -3,7 +3,7 @@ from openai import OpenAI
 from fastapi import APIRouter, HTTPException
 from supabase import Client
 
-from .schemas import QueryRequest, QueryResponse, ErrorResponse
+from ..schemas import QueryRequest, QueryResponse, ErrorResponse
 from ...config import get_settings_lazy
 from ...db import get_client
 from ...rag import recuperar, construir_prompt, ChunkRecuperado
