@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Query
 from supabase import Client
 
-from ..db import get_client
+from ...db import get_client
 
 
 router = APIRouter(prefix="/storage", tags=["storage"])
