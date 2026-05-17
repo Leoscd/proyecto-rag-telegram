@@ -3,10 +3,14 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from .routes.ingest import router as ingest_router
+from .routes.query import router as query_router
+from .routes.logs import router as logs_router
 
 app = FastAPI(title="RAG-Obras API", version="0.1.0")
 
 app.include_router(ingest_router)
+app.include_router(query_router)
+app.include_router(logs_router)
 
 
 @app.get("/")
