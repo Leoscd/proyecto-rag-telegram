@@ -16,7 +16,7 @@ def responder(
     # Temperature más baja si contexto pobre (más conservador)
     temperature = 0.2 if contexto_pobre else 0.3
 
-    url = "https://api.minimax.chat/v1/text/chatcompletion_v2"
+    url = f"https://api.minimax.chat/v1/text/chatcompletion_v2?GroupId={settings.minimax_group_id}"
     headers = {
         "Authorization": f"Bearer {settings.minimax_api_key}",
         "Content-Type": "application/json",
@@ -31,8 +31,11 @@ def responder(
     try:
         with httpx.Client(timeout=30.0) as client:
             response = client.post(url, headers=headers, json=body)
-            response.raise_for_status()
             data = response.json()
+            if "choices" not in data:
+                raise RuntimeError(f"Respuesta inesperada de MiniMax: {data}")
             return data["choices"][0]["message"]["content"]
+    except RuntimeError:
+        raise
     except Exception as e:
         raise RuntimeError(f"Error al llamar MiniMax: {e}")
