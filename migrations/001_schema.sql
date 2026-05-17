@@ -1,6 +1,6 @@
 -- Migration 001: Esquema completo RAG-Obras
--- Idempotente: usar IF NOT EXISTS / IF NOT EXISTS (drop constraint)
--- Ejecutar: psql -h <host> -U <user> -d <db> -f 001_schema.sql
+-- Idempotente: IF NOT EXISTS en todo.
+-- Aplicada en Supabase el 2026-05-17 via MCP.
 
 -- Extensión vector
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS documentos (
 );
 
 -- Tabla chunks (embeddings vectoriales)
+-- vector(3072) = text-embedding-3-large
+-- NOTA: pgvector limita índices hnsw/ivfflat a 2000 dims máximo.
+-- Con 3072 dims el CREATE INDEX falla. Para el MVP (volumen demo)
+-- se usa exact scan (ORDER BY embedding <=> query LIMIT 5).
+-- Cuando escale: migrar a halfvec(3072) o reducir a 1536 dims.
 CREATE TABLE IF NOT EXISTS chunks (
     id SERIAL PRIMARY KEY,
     documento_id INTEGER REFERENCES documentos(id) ON DELETE CASCADE,
@@ -36,7 +41,7 @@ CREATE TABLE IF NOT EXISTS chunks (
     metadata JSONB DEFAULT '{}'::jsonb
 );
 
--- Tabla consultas (logs)
+-- Tabla consultas (logs RAG)
 CREATE TABLE IF NOT EXISTS consultas (
     id SERIAL PRIMARY KEY,
     proyecto_id INTEGER REFERENCES proyectos(id) ON DELETE CASCADE,
@@ -48,22 +53,7 @@ CREATE TABLE IF NOT EXISTS consultas (
     timestamp TIMESTAMP DEFAULT NOW()
 );
 
--- Índice vectorial sobre chunks.embedding (coseno)
--- Usamos ivfflat (más liviano para VPS) o hnsw (más rápido)
--- ivfflat requiere datos, hnsw funciona vacío
-
--- opción 1: ivfflat (clásico, más liviano)
--- CREATE INDEX IF NOT EXISTS idx_chunks_embedding_ivfflat
--- ON chunks USING ivfflat (embedding vector_cosine_ops)
--- WITH (lists = 100);
-
--- opción 2: hnsw (más rápido, requiere más memoria)
--- HNSW es el default recomendado hoy
-CREATE INDEX IF NOT EXISTS idx_chunks_embedding_hnsw
-ON chunks USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
-
--- Índices regulares para queries comunes
+-- Índices regulares
 CREATE INDEX IF NOT EXISTS idx_documentos_proyecto ON documentos(proyecto_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_documento ON chunks(documento_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_proyecto ON chunks(proyecto_id);
