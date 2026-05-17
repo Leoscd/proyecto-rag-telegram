@@ -3,86 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG-Obras Dashboard</title>
+    <title>Dashboard - RAG-Obras</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1100px; margin: 0 auto; }
         
         h1 { color: #1a1a1a; margin-bottom: 20px; }
         
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 30px; }
-        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; }
-        .stat-card .value { font-size: 32px; font-weight: bold; color: #1a1a1a; }
+        .card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card h2 { font-size: 16px; color: #333; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px; }
         
-        .section { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        .section h2 { font-size: 18px; margin-bottom: 15px; color: #333; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px; }
+        .stat { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; }
+        .stat-value { font-size: 32px; font-weight: bold; color: #1a1a1a; }
+        .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        .stat.warning .stat-value { color: #d97706; }
         
         table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
         th { background: #f9f9f9; font-weight: 600; color: #666; }
         
         .score { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; }
-        .score.good { background: #d4edda; color: #155724; }
-        .score.medium { background: #fff3cd; color: #856404; }
-        .score.poor { background: #f8d7da; color: #721c24; }
+        .score.good { background: #d4edda; color: #16a34a; }
+        .score.medium { background: #fef3c7; color: #d97706; }
+        .score.poor { background: #fee2e2; color: #dc2626; }
         
-        .btn { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
-        .btn:hover { background: #0056b3; }
+        .gap-item { padding: 10px; border-bottom: 1px solid #eee; }
+        .gap-item:last-child { border-bottom: none; }
         
-        .error { color: #dc3545; padding: 10px; background: #f8d7da; border-radius: 4px; margin-bottom: 15px; }
+        .btn { background: #2563eb; color: #fff; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn:hover { background: #1d4ed8; }
         
-        #upload-form { display: none; }
-        #upload-form.active { display: block; }
+        select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🏗️ RAG-Obras Dashboard</h1>
+        <h1>📊 Dashboard RAG-Obras</h1>
         
         <div class="stats">
-            <div class="stat-card">
-                <h3>Consultas Totales</h3>
-                <div class="value" id="total-consultas">-</div>
+            <div class="stat">
+                <div class="stat-value" id="total-consultas">-</div>
+                <div class="stat-label">Total consultas</div>
             </div>
-            <div class="stat-card">
-                <h3>Documentos</h3>
-                <div class="value" id="total-documentos">-</div>
+            <div class="stat">
+                <div class="stat-value" id="score-promedio">-</div>
+                <div class="stat-label">Score promedio</div>
             </div>
-            <div class="stat-card">
-                <h3>Score Promedio</h3>
-                <div class="value" id="score-promedio">-</div>
+            <div class="stat warning">
+                <div class="stat-value" id="sin-respuesta">-</div>
+                <div class="stat-label">Sin respuesta</div>
             </div>
         </div>
         
-        <div class="section">
-            <h2>📋 Consultas Recientes</h2>
-            <button class="btn" onclick="toggleUpload()">+ Subir Documento</button>
-            
-            <div id="upload-form" class="section" style="margin-top: 15px;">
-                <h3>Subir Documento</h3>
-                <form id="ingest-form" enctype="multipart/form-data">
-                    <input type="file" name="archivo" accept=".pdf,.docx" required>
-                    <input type="text" name="nombre" placeholder="Nombre" required>
-                    <select name="tipo">
-                        <option value="manual">Manual</option>
-                        <option value="especificacion">Especificación</option>
-                        <option value="plano">Plano</option>
-                        <option value="protocolo">Protocolo</option>
-                        <option value="cronograma">Cronograma</option>
-                    </select>
-                    <input type="text" name="sector" placeholder="Sector (opcional)">
-                    <input type="number" name="proyecto_id" value="1" hidden>
-                    <button type="submit" class="btn">Subir</button>
-                </form>
-            </div>
-            
+        <!-- Filtro proyecto -->
+        <div class="card">
+            <select id="proyecto-select">
+                <option value="">Todos los proyectos</option>
+            </select>
+            <button class="btn" onclick="cargarStats()">Actualizar</button>
+        </div>
+        
+        <!--Gaps de documentación -->
+        <div class="card" id="gaps-card" style="display:none;">
+            <h2>⚠️ Preguntas sin documentación adecuada</h2>
+            <div id="gaps-list"></div>
+        </div>
+        
+        <!-- Consulta reciente -->
+        <div class="card">
+            <h2>📋 Consultas recientes</h2>
             <table>
                 <thead>
                     <tr>
                         <th>Usuario</th>
-                        <th>Mensaje</th>
+                        <th>Consulta</th>
                         <th>Score</th>
                         <th>Fecha</th>
                     </tr>
@@ -97,72 +93,73 @@
     <script>
         const API_URL = window.location.origin;
         
-        function toggleUpload() {
-            document.getElementById('upload-form').classList.toggle('active');
-        }
-        
-        async function loadLogs() {
-            try {
-                const response = await fetch(`${API_URL}/logs?limit=50`);
-                const data = await response.json();
-                
-                const tbody = document.getElementById('logs-table');
-                if (!data.length) {
-                    tbody.innerHTML = '<tr><td colspan="4">No hay consultas</td></tr>';
-                    return;
-                }
-                
-                tbody.innerHTML = data.map(log => {
-                    const score = log.score_maximo;
-                    const scoreClass = score < 0.5 ? 'good' : score < 1.0 ? 'medium' : 'poor';
-                    const fecha = new Date(log.timestamp).toLocaleString('es-AR');
-                    
-                    return `<tr>
-                        <td>${log.usuario_telegram}</td>
-                        <td>${log.mensaje_original.substring(0, 60)}...</td>
-                        <td><span class="score ${scoreClass}">${score.toFixed(2)}</span></td>
-                        <td>${fecha}</td>
-                    </tr>`;
-                }).join('');
-                
-                // Stats
-                document.getElementById('total-consultas').textContent = data.length;
-                const avgScore = data.reduce((s, l) => s + l.score_maximo, 0) / data.length;
-                document.getElementById('score-promedio').textContent = avgScore.toFixed(2);
-                
-            } catch (e) {
-                console.error(e);
-                document.getElementById('logs-table').innerHTML = 
-                    '<tr><td colspan="4" class="error">Error al cargar logs</td></tr>';
-            }
-        }
-        
-        // Form upload
-        document.getElementById('ingest-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            
-            try {
-                const response = await fetch(`${API_URL}/ingest`, {
-                    method: 'POST',
-                    body: formData
+        // Cargar proyectos
+        fetch(API_URL + '/proyectos?activo=true')
+            .then(r => r.json())
+            .then(proyectos => {
+                const select = document.getElementById('proyecto-select');
+                proyectos.forEach(p => {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    opt.textContent = p.nombre;
+                    select.appendChild(opt);
                 });
-                
-                if (response.ok) {
-                    alert('Documento subido');
-                    loadLogs();
-                    toggleUpload();
-                } else {
-                    alert('Error al subir');
-                }
-            } catch (e) {
-                alert('Error: ' + e);
-            }
-        });
+                cargarStats();
+            });
         
-        // Load inicial
-        loadLogs();
-        setInterval(loadLogs, 30000);
+        function cargarStats() {
+            const proyectoId = document.getElementById('proyecto-select').value;
+            const params = proyectoId ? '?proyecto_id=' + proyectoId : '';
+            
+            // Stats
+            fetch(API_URL + '/stats' + params)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('total-consultas').textContent = data.total_consultas || 0;
+                    document.getElementById('score-promedio').textContent = Math.round((data.score_promedio || 0) * 100) + '%';
+                    document.getElementById('sin-respuesta').textContent = data.consultas_sin_respuesta || 0;
+                    
+                    // Gaps
+                    const gapsCard = document.getElementById('gaps-card');
+                    const gapsList = document.getElementById('gaps-list');
+                    if (data.gaps_documentacion && data.gaps_documentacion.length > 0) {
+                        gapsCard.style.display = 'block';
+                        gapsList.innerHTML = data.gaps.map(g => 
+                            '<div class="gap-item">' +
+                                '<strong>' + g.mensaje.substring(0, 60) + '...</strong><br>' +
+                                '<span class="score poor">Score: ' + Math.round(g.score_maximo * 100) + '%</span> ' +
+                                '<small>' + g.timestamp + '</small>' +
+                            '</div>'
+                        ).join('');
+                    } else {
+                        gapsCard.style.display = 'none';
+                    }
+                });
+            
+            // Logs
+            fetch(API_URL + '/logs' + params + '&limit=50')
+                .then(r => r.json())
+                .then(logs => {
+                    const tbody = document.getElementById('logs-table');
+                    if (!logs.length) {
+                        tbody.innerHTML = '<tr><td colspan="4">Sin consultas</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = logs.map(l => {
+                        const score = l.score_maximo;
+                        const scoreClass = score >= 0.6 ? 'good' : score >= 0.4 ? 'medium' : 'poor';
+                        const fecha = l.timestamp ? l.timestamp.replace('T', ' ').substring(0, 16) : '-';
+                        return '<tr>' +
+                            '<td>' + l.usuario_telegram + '</td>' +
+                            '<td>' + l.mensaje_original.substring(0, 50) + '...</td>' +
+                            '<td><span class="score ' + scoreClass + '">' + Math.round(score * 100) + '%</span></td>' +
+                            '<td>' + fecha + '</td>' +
+                        '</tr>';
+                    }).join('');
+                });
+        }
+        
+        document.getElementById('proyecto-select').addEventListener('change', cargarStats);
     </script>
 </body>
 </html>

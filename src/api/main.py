@@ -10,6 +10,7 @@ from .routes.logs import router as logs_router
 from .routes.storage import router as storage_router
 from .routes.proyectos import router as proyectos_router
 from .routes.documentos import router as documentos_router
+from .routes.stats import router as stats_router
 
 app = FastAPI(title="RAG-Obras API", version="0.1.0")
 
@@ -25,6 +26,7 @@ app.include_router(logs_router)
 app.include_router(storage_router)
 app.include_router(proyectos_router)
 app.include_router(documentos_router)
+app.include_router(stats_router)
 
 
 @app.get("/")
@@ -40,6 +42,15 @@ def admin_page():
     if admin_path.exists():
         return FileResponse(str(admin_path))
     return JSONResponse(status_code=404, content={"error": "Admin no encontrado"})
+
+
+@app.get("/dashboard")
+def dashboard_page():
+    """Página del dashboard."""
+    dashboard_path = static_path / "index.html"
+    if dashboard_path.exists():
+        return FileResponse(str(dashboard_path))
+    return JSONResponse(status_code=404, content={"error": "Dashboard no encontrado"})
 
 
 @app.exception_handler(Exception)
