@@ -1,5 +1,5 @@
 """Configuración del proyecto RAG-Obras."""
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
 
@@ -7,16 +7,14 @@ from typing import Optional
 class Settings(BaseSettings):
     """Settings cargados desde variables de entorno."""
 
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
     openai_api_key: str = Field(default="", description="OpenAI API key para embeddings")
     minimax_api_key: str = Field(default="", description="MiniMax API key para LLM")
     minimax_group_id: str = Field(default="", description="MiniMax Group ID")
     supabase_url: str = Field(default="", description="URL de Supabase")
     supabase_key: str = Field(default="", description="API key de Supabase")
     telegram_bot_token: str = Field(default="", description="Token del bot de Telegram")
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 def get_settings() -> Settings:
