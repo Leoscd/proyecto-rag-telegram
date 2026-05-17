@@ -1,0 +1,18 @@
+[Unit]
+Description=RAG-Obras API
+After=network.target
+
+[Service]
+Type=simple
+User=ragobras
+WorkingDirectory=/srv/rag-obras
+EnvironmentFile=/srv/rag-obras/.env
+ExecStart=/srv/rag-obras/.venv/bin/uvicorn src.api.main:app \
+          --host 0.0.0.0 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

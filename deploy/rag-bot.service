@@ -1,0 +1,17 @@
+[Unit]
+Description=RAG-Obras Bot Telegram
+After=network.target rag-api.service
+
+[Service]
+Type=simple
+User=ragobras
+WorkingDirectory=/srv/rag-obras
+EnvironmentFile=/srv/rag-obras/.env
+ExecStart=/srv/rag-obras/.venv/bin/python -m src.bot.main
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
