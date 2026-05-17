@@ -46,7 +46,7 @@ async def ingest_doc(
     tmp_path = None
     try:
         # 1. Guardar archivo temporalmente
-        suffix = Path(nombre).suffix
+        suffix = Path(archivo.filename or nombre).suffix
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             contenido = await archivo.read()
             tmp.write(contenido)
