@@ -49,6 +49,36 @@ class LogResponse(BaseModel):
     timestamp: str
 
 
+# Proyectos schemas
+class ProyectoCreate(BaseModel):
+    """Request para crear proyecto."""
+    nombre: str
+    descripcion: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+
+
+class ProyectoResponse(BaseModel):
+    """Response de proyecto."""
+    id: int
+    nombre: str
+    descripcion: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+    activo: bool = True
+
+
+# Documentos schemas
+class DocumentoResponse(BaseModel):
+    """Response de documento."""
+    id: int
+    proyecto_id: int
+    nombre: str
+    tipo: str
+    sector: Optional[str] = None
+    ruta_archivo: Optional[str] = None
+    fecha_carga: Optional[str] = None
+    chunks_count: int = 0
+
+
 class ErrorResponse(BaseModel):
     """Response de error."""
     error: str
