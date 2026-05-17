@@ -6,7 +6,7 @@ supabase
 pymupdf
 python-docx
 python-dotenv
-pydantic
+pydantic-settings
 tiktoken
 httpx
 pytest
