@@ -1,0 +1,104 @@
+"""Router para endpoint /ingest."""
+import tempfile
+from pathlib import Path
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from supabase import Client
+
+from .schemas import IngestResponse, ErrorResponse
+from ...ingesta import extraer, chunkear, embeder_y_guardar, DocumentoExtraido
+from ...config import get_settings_lazy
+from ...db import get_client
+
+
+router = APIRouter(prefix="/ingest", tags=["ingesta"])
+
+TIPOS_VALIDOS = {"manual", "especificacion", "plano", "protocolo", "cronograma"}
+
+
+@router.post("", response_model=IngestResponse)
+async def ingest_doc(
+    proyecto_id: int = Form(...),
+    nombre: str = Form(...),
+    tipo: str = Form(...),
+    sector: str = Form(""),
+    archivo: UploadFile = File(...),
+):
+    """
+    Orchestras el pipeline de ingesta:
+    1. Guarda en Storage
+    2. Extrae texto
+    3. Chunkea
+    4. Embedder + guardado
+    """
+    # Validar tipo
+    if tipo not in TIPOS_VALIDOS:
+        raise HTTPException(422, f"Tipo inválido. Usar: {', '.join(TIPOS_VALIDOS)}")
+
+    settings = get_settings_lazy()
+    supabase_client: Client = get_client()
+    bucket_name = "documentos"
+
+    try:
+        # 1. Guardar archivo temporalmente
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            contenido = await archivo.read()
+            tmp.write(contenido)
+            tmp_path = tmp.name
+
+        # 2. Subir a Supabase Storage
+        path_storage = f"{proyecto_id}/{nombre}"
+        supabase_client.storage.from_(bucket_name).upload(
+            path=path_storage,
+            file=contenido,
+            file_options={"content-type": archivo.content_type or "application/octet-stream"},
+        )
+
+        # 3. Extraer texto
+        extractor_result: DocumentoExtraido = extraer(tmp_path)
+
+        # 4. Insertar en tabla documentos
+        doc_insert = {
+            "proyecto_id": proyecto_id,
+            "nombre": nombre,
+            "tipo": tipo,
+            "sector": sector or None,
+            "ruta_archivo": path_storage,
+            "texto_extraido": extractor_result.texto if not extractor_result.es_imagen else "",
+        }
+        doc_response = supabase_client.table("documentos").insert(doc_insert).execute()
+        documento_id = doc_response.data[0]["id"]
+
+        chunks_generados = 0
+
+        # 5. Si no es imagen → chunkear + embedder
+        if not extractor_result.es_imagen:
+            metadata_base = {
+                "documento_id": documento_id,
+                "proyecto_id": proyecto_id,
+                "tipo": tipo,
+                "sector": sector or None,
+                "nombre_documento": nombre,
+                "es_imagen": False,
+                "ruta_archivo": path_storage,
+            }
+            chunks = chunkear(extractor_result.texto, metadata_base)
+            chunks_generados = embeder_y_guardar(chunks, documento_id, proyecto_id)
+
+            # 6. Actualizar texto_extraido en documentos
+            supabase_client.table("documentos").update(
+                {"texto_extraido": extractor_result.texto}
+            ).eq("id", documento_id).execute()
+
+        # Limpiar tmp
+        Path(tmp_path).unlink()
+
+        return IngestResponse(
+            documento_id=documento_id,
+            nombre=nombre,
+            chunks_generados=chunks_generados,
+            es_imagen=extractor_result.es_imagen,
+            status="ok",
+        )
+
+    except Exception as e:
+        raise HTTPException(500, str(e))
