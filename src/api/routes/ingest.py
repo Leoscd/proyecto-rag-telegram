@@ -103,12 +103,13 @@ async def ingest_doc(
                     pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
                     for i in range(len(pdf_doc)):
+                        n = i + 1  # página 1-indexed
                         try:
                             # Render página como PNG
                             pix = pdf_doc[i].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
                             png_bytes = pix.tobytes("png")
+                            pix = None  # Liberar pixmap explícitamente (VPS 2GB)
 
-                            n = i + 1  # página 1-indexed
                             path_png = f"{proyecto_id}/{documento_id}/paginas/pagina_{n}.png"
 
                             supabase_client.storage.from_(bucket_name).upload(
@@ -119,9 +120,6 @@ async def ingest_doc(
                             pagina_a_path[n] = path_png
                         except Exception as e:
                             print(f"WARN render página {n}: {e}")
-                        finally:
-                            if i < len(pdf_doc):
-                                pdf_doc[i] = None  # Liberar memoria
 
                     pdf_doc.close()
 

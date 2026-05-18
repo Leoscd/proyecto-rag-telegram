@@ -17,23 +17,22 @@ def test_chunker_tamano_y_overlap():
     for i, chunk in enumerate(chunks[:-1]):
         assert 400 <= chunk.tokens <= 520, f"Chunk {i} tokens {chunk.tokens} fuera de rango"
     
-    # Verificar overlap real: las últimas N palabras del chunk 0 deben estar al inicio del chunk 1
+    # Verificar overlap real: el mayor sufijo de chunk0 que es prefijo de chunk1 debe ser ~50 palabras
     if len(chunks) >= 2:
-        # Contar overlap en palabras (aproximación a tokens)
         tokens0 = chunks[0].texto.split()
         tokens1 = chunks[1].texto.split()
-        
-        # Buscar cuántas palabras del final de chunk0 coinciden con el inicio de chunk1
+
         overlap_count = 0
-        for i in range(min(len(tokens0), len(tokens1))):
-            if tokens0[-(i+1)] == tokens1[i]:
-                overlap_count = i + 1
-            else:
+        min_len = min(len(tokens0), len(tokens1))
+        for k in range(min_len, 0, -1):
+            if tokens0[-k:] == tokens1[:k]:
+                overlap_count = k
                 break
-        
-        # El overlap debe estar en [35, 65] tokens con tolerancia
-        # Por ahora verificamos que tenga overlap (al menos 10 palabras)
-        assert overlap_count >= 10, f"Overlap demasiado bajo: {overlap_count}. Tokens: {tokens0[-10:]} vs {tokens1[:10]}"
+
+        assert 35 <= overlap_count <= 65, (
+            f"Overlap esperado [35,65] palabras, got {overlap_count}. "
+            f"Fin chunk0: {tokens0[-10:]} | Inicio chunk1: {tokens1[:10]}"
+        )
 
 
 @pytest.mark.skipif(
