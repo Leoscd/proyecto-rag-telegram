@@ -10,10 +10,11 @@ from docx import Document
 @dataclass
 class DocumentoExtraido:
     """Resultado de extracción de texto de un documento."""
-    texto: str      # texto extraído (vacío si es imagen sin OCR)
-    paginas: int    # número de páginas (1 para Word/imagen)
-    es_imagen: bool  # True si el doc es plano/imagen (no texto extraíble)
-    bytes_raw: bytes  # bytes originales del archivo (para guardar en Storage)
+    texto: str           # texto extraído (vacío si es imagen sin OCR)
+    paginas: int         # número de páginas (1 para Word/imagen)
+    es_imagen: bool      # True si el doc es plano/imagen (no texto extraíble)
+    bytes_raw: bytes     # bytes originales del archivo (para guardar en Storage)
+    paginas_texto: list[str] = None  # PDF: una entrada por página (índice 0 = pág 1)
 
 
 def extraer(ruta_archivo: str) -> DocumentoExtraido:
@@ -49,7 +50,8 @@ def extraer(ruta_archivo: str) -> DocumentoExtraido:
             texto="",
             paginas=1,
             es_imagen=True,
-            bytes_raw=bytes_raw
+            bytes_raw=bytes_raw,
+            paginas_texto=[],
         )
 
 
@@ -63,29 +65,36 @@ def _extraer_pdf(bytes_raw: bytes) -> DocumentoExtraido:
             texto="",
             paginas=0,
             es_imagen=True,
-            bytes_raw=bytes_raw
+            bytes_raw=bytes_raw,
+            paginas_texto=[],
         )
 
-    textos = []
+    textos_paginas = []  # Una entrada por página (índice 0 = página 1)
+    textos = []        # Texto concatenado con marcadores
     tiene_texto = False
 
     for i, pagina in enumerate(doc, start=1):
         texto = pagina.get_text().strip()
         if texto:
             tiene_texto = True
+            textos_paginas.append(texto)
             textos.append(f"\n\n--- Página {i} ---\n\n{texto}")
         else:
+            textos_paginas.append("")
             textos.append(f"\n\n--- Página {i} ---\n\n")
 
     doc.close()
 
     texto_final = "".join(textos).strip()
+    # paginas_texto: índice 0 = página 1
+    paginas_texto = textos_paginas
 
     return DocumentoExtraido(
         texto=texto_final,
         paginas=num_paginas,
         es_imagen=not tiene_texto,
-        bytes_raw=bytes_raw
+        bytes_raw=bytes_raw,
+        paginas_texto=paginas_texto,
     )
 
 
@@ -109,5 +118,6 @@ def _extraer_docx(bytes_raw: bytes) -> DocumentoExtraido:
         texto=texto,
         paginas=1,
         es_imagen=False,
-        bytes_raw=bytes_raw
+        bytes_raw=bytes_raw,
+        paginas_texto=[],
     )

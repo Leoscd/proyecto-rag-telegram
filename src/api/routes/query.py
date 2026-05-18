@@ -65,11 +65,19 @@ async def query_doc(request: QueryRequest):
         # 6. Determinar si tiene imagen
         tiene_imagen = False
         ruta_imagen = None
-        for chunk in chunks:
-            if chunk.metadata.get("es_imagen"):
-                tiene_imagen = True
-                ruta_imagen = chunk.metadata.get("ruta_archivo")
-                break
+
+        # NUEVO:优先 usar page_image_path del top chunk si similitud > 0.35
+        top = chunks[0]
+        if top.metadata.get("page_image_path") and score_maximo > 0.35:
+            tiene_imagen = True
+            ruta_imagen = top.metadata["page_image_path"]
+        else:
+            # Fallback: buscar es_imagen (plano/imagen directa)
+            for chunk in chunks:
+                if chunk.metadata.get("es_imagen"):
+                    tiene_imagen = True
+                    ruta_imagen = chunk.metadata.get("ruta_archivo")
+                    break
 
         chunks_usados = [c.chunk_id for c in chunks]
 

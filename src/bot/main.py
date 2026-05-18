@@ -103,9 +103,16 @@ async def handle_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             respuesta = data.get("respuesta", "No encontré información.")
             score = data.get("score_maximo", 0.0)
 
-            # 2. Si tiene imagen, obtener URL firmada
+            # --- NUEVO: formato conversacional ---
+            if score < 0.4:
+                respuesta = "⚠️ No encontré documentación sobre esto en los documentos cargados. Intentá reformular la pregunta."
+                await update.message.reply_text(respuesta)
+                return
+
+            # 2. Si tiene imagen, obtener URL firmada y descargar
             img_bytes = None
-            if data.get("tiene_imagen") and data.get("ruta_imagen"):
+            tiene_imagen = data.get("tiene_imagen") and data.get("ruta_imagen")
+            if tiene_imagen:
                 try:
                     url_resp = await client.get(
                         f"{API_URL}/storage/url",
@@ -120,22 +127,16 @@ async def handle_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 except Exception as e:
                     print(f"Error descargando imagen: {e}")
 
-            # 3. Formatear respuesta
-            score_pct = int(score * 100)
-            relevancia = f"📊 Relevancia: {score_pct}%"
-
-            if score < 0.4:
-                respuesta = "⚠️ No encontré documentación específica sobre esto."
-                relevancia = ""
-
-            await update.message.reply_text(respuesta)
-
-            if relevancia:
-                await update.message.reply_text(relevancia)
-
-            # 4. Enviar imagen si hay
+            # 3. Enviar respuesta (un solo mensaje: foto+caption o solo texto)
             if img_bytes:
-                await update.message.reply_photo(img_bytes)
+                # Telegram limita caption a ~1024 caracteres
+                if len(respuesta) > 1024:
+                    await update.message.reply_text(respuesta)
+                    await update.message.reply_photo(photo=img_bytes)
+                else:
+                    await update.message.reply_photo(photo=img_bytes, caption=respuesta)
+            else:
+                await update.message.reply_text(respuesta)
 
     except httpx.TimeoutException:
         await update.message.reply_text("⏱️ Tiempo de espera agotado. Intenta más tarde.")

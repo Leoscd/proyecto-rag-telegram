@@ -1,4 +1,5 @@
 """Router para endpoint /ingest."""
+import fitz  # PyMuPDF
 import tempfile
 from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -34,7 +35,9 @@ async def ingest_doc(
     1. Guarda en Storage
     2. Extrae texto
     3. Chunkea / chunk sintético si es imagen
-    4. Embedder + guardado
+    4. Render páginas PNG (solo PDF con texto)
+    5. Mapeo chunk→página
+    6. Embedder + guardado
     """
     if tipo not in TIPOS_VALIDOS:
         raise HTTPException(422, f"Tipo inválido. Usar: {', '.join(TIPOS_VALIDOS)}")
@@ -89,6 +92,79 @@ async def ingest_doc(
                 "ruta_archivo": path_storage,
             }
             chunks = chunkear(extractor_result.texto, metadata_base)
+
+            # --- NUEVO: Render páginas PNG para PDFs ---
+            pagina_a_path: dict[int, str] = {}
+            if suffix.lower() == '.pdf' and extractor_result.paginas_texto:
+                try:
+                    # Abrir PDF para render
+                    with open(tmp_path, 'rb') as f:
+                        pdf_bytes = f.read()
+                    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+
+                    for i in range(len(pdf_doc)):
+                        try:
+                            # Render página como PNG
+                            pix = pdf_doc[i].get_pixmap(matrix=fitz.Matrix(1.5, 1.5))
+                            png_bytes = pix.tobytes("png")
+
+                            n = i + 1  # página 1-indexed
+                            path_png = f"{proyecto_id}/{documento_id}/paginas/pagina_{n}.png"
+
+                            supabase_client.storage.from_(bucket_name).upload(
+                                path=path_png,
+                                file=png_bytes,
+                                file_options={"content-type": "image/png"},
+                            )
+                            pagina_a_path[n] = path_png
+                        except Exception as e:
+                            print(f"WARN render página {n}: {e}")
+                        finally:
+                            if i < len(pdf_doc):
+                                pdf_doc[i] = None  # Liberar memoria
+
+                    pdf_doc.close()
+
+                    # --- Mapeo chunk → página por offset ---
+                    if pagina_a_path and extractor_result.paginas_texto:
+                        # Calcular offsets donde empieza cada página en el texto concatenado
+                        offsets_paginas = []
+                        texto_concatenado = extractor_result.texto
+                        for i, texto_pag in enumerate(extractor_result.paginas_texto):
+                            # Buscar el marcador "--- Página N ---" y luego el inicio del texto
+                            marcador = f"--- Página {i+1} ---"
+                            idx = texto_concatenado.find(marcador)
+                            if idx >= 0:
+                                # El offset es donde termina el marcador + newline
+                                offset = idx + len(marcador) + 2  # +2 por los \n\n
+                                offsets_paginas.append(offset)
+
+                        # Para cada chunk, determinar a qué página pertenece
+                        cursor = 0
+                        for chunk in chunks:
+                            # Buscar offset de inicio del chunk en el texto
+                            offset_chunk = texto_concatenado.find(chunk.texto, cursor)
+                            if offset_chunk < 0:
+                                offset_chunk = cursor  # fallback: usar último offset conocido
+
+                            # La página del chunk es la mayor página cuyo offset ≤ offset_chunk
+                            pagina_del_chunk = None
+                            for pg, offset_pg in enumerate(offsets_paginas, start=1):
+                                if offset_pg <= offset_chunk:
+                                    pagina_del_chunk = pg
+                                else:
+                                    break
+
+                            if pagina_del_chunk and pagina_del_chunk in pagina_a_path:
+                                chunk.metadata["page_image_path"] = pagina_a_path[pagina_del_chunk]
+
+                            cursor = offset_chunk
+
+                except Exception as e:
+                    print(f"WARN render/subida páginas PDF: {e}")
+
+            # --- FIN render páginas ---
+
             chunks_generados = embeder_y_guardar(chunks, documento_id, proyecto_id)
 
             # Actualizar texto_extraido

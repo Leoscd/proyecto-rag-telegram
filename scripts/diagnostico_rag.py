@@ -56,6 +56,7 @@ def diagnostico():
     print("2. RETRIEVAL")
     print("=" * 60)
     
+    chunks = []  # Inicializar antes del try
     try:
         client = OpenAI(api_key=settings.openai_api_key)
         
