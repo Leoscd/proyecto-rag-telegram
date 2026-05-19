@@ -81,8 +81,6 @@ async def handle_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     proyecto_id = get_proyecto(user_id)
 
-    await update.message.reply_text("🔎 Buscando en los documentos...")
-
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             # 1. Consultar API
