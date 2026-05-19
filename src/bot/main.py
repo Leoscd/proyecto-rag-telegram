@@ -12,6 +12,10 @@ API_URL = os.environ.get("API_URL", "http://localhost:8000")
 # Proyectos activos por usuario: {user_id: proyecto_id}
 proyectos_activos: dict[int, int] = {}
 
+# Historial conversacional por usuario: {user_id: [{"pregunta": str, "respuesta": str}, ...]}
+historial: dict[int, list[dict]] = {}
+MAX_RONDAS = 5
+
 
 def get_proyecto(user_id: int) -> int:
     """Obtiene el proyecto activo de un usuario."""
@@ -21,6 +25,27 @@ def get_proyecto(user_id: int) -> int:
 def set_proyecto(user_id: int, proyecto_id: int):
     """Cambia el proyecto activo de un usuario."""
     proyectos_activos[user_id] = proyecto_id
+
+
+def get_historial(user_id: int) -> list[dict]:
+    """Obtiene el historial de un usuario."""
+    return historial.get(user_id, [])
+
+
+def push_ronda(user_id: int, pregunta: str, respuesta: str) -> None:
+    """Agrega una ronda al historial y recorta a MAX_RONDAS."""
+    if user_id not in historial:
+        historial[user_id] = []
+    historial[user_id].append({"pregunta": pregunta, "respuesta": respuesta})
+    # Recortar a MAX_RONDAS (FIFO)
+    if len(historial[user_id]) > MAX_RONDAS:
+        historial[user_id] = historial[user_id][-MAX_RONDAS:]
+
+
+def reset_historial(user_id: int) -> None:
+    """Limpia el historial de un usuario."""
+    if user_id in historial:
+        historial[user_id] = []
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,6 +88,7 @@ async def proyecto_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             proyecto_id = int(args[0])
             set_proyecto(user_id, proyecto_id)
+            reset_historial(user_id)  # Limpiar historial al cambiar de proyecto
             await update.message.reply_text(f"✅ Proyecto cambiado a {proyecto_id}")
         except ValueError:
             await update.message.reply_text("❌ ID de proyecto inválido. Uso: /proyecto <id>")
@@ -90,6 +116,7 @@ async def handle_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "proyecto_id": proyecto_id,
                     "mensaje": mensaje,
                     "usuario_telegram": username,
+                    "historial": get_historial(user_id),
                 }
             )
 
@@ -135,6 +162,9 @@ async def handle_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_photo(photo=img_bytes, caption=respuesta)
             else:
                 await update.message.reply_text(respuesta)
+
+            # Guardar ronda en historial (solo si hubo contexto util)
+            push_ronda(user_id, mensaje, respuesta)
 
     except httpx.TimeoutException:
         await update.message.reply_text("⏱️ Tiempo de espera agotado. Intenta más tarde.")

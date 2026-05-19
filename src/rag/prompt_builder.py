@@ -6,6 +6,7 @@ def construir_prompt(
     query: str,
     chunks: list[ChunkRecuperado],
     similitud_umbral: float = 0.35,
+    historial: list[dict] | None = None,
 ) -> tuple[str, bool]:
     """
     Construye el prompt para el LLM.
@@ -14,6 +15,9 @@ def construir_prompt(
     Umbral de similitud: 0.35 (mayor = mejor match).
     Si similitud < umbral, contexto_pobre = True.
     """
+    if historial is None:
+        historial = []
+
     if not chunks:
         contexto_pobre = True
         prompt = "Sos un asistente tecnico de obra. No tengo informacion disponible. Respondio: \"No tengo informacion sobre esto en los documentos disponibles.\""
@@ -38,8 +42,36 @@ def construir_prompt(
 
     contexto = "\n\n".join(contexto_parts)
 
+    # Insertar historial antes de CONTEXTO si hay rondas validas
+    historial_block = ""
+    if historial:
+        valid_rounds = [r for r in historial if isinstance(r, dict) and "pregunta" in r and "respuesta" in r]
+        if valid_rounds:
+            historial_lines = []
+            for r in valid_rounds:
+                historial_lines.append(f"Usuario: {r['pregunta']}\nAsistente: {r['respuesta']}")
+            historial_block = "HISTORIAL DE CONVERSACIÓN RECIENTE:\n" + "\n\n".join(historial_lines) + "\n\n"
+
     # Prompt mejorado: responde con lo que hay, usa "Segun los documentos disponibles"
-    prompt = f"""Sos un asistente tecnico de obra que ayuda con la informacion disponible en los planos, manuales y especificaciones del proyecto.
+    if historial_block:
+        prompt = f"""Sos un asistente tecnico de obra que ayuda con la informacion disponible en los planos, manuales y especificaciones del proyecto.
+
+Instructions:
+1. Responde usando UNICAMENTE la informacion del contexto de abajo.
+2. Si el contexto tiene informacion relacionada pero no completa, responde con lo que si esta disponible usando: "Segun los documentos disponibles, ..." y aclara que parte no figura.
+3. Si la informacion del contexto no tiene relacion con la pregunta, responde: "No tengo informacion sobre esto en los documentos disponibles."
+4. NO inventes datos, medidas, procedimientos ni normativas que no esten en el contexto.
+5. Si hay ambiguedad, explica que dice el documento y que falta.
+
+{historial_block}CONTEXTO:
+{contexto}
+
+PREGUNTA ACTUAL: {query}
+
+RESPUESTA:
+"""
+    else:
+        prompt = f"""Sos un asistente tecnico de obra que ayuda con la informacion disponible en los planos, manuales y especificaciones del proyecto.
 
 Instructions:
 1. Responde usando UNICAMENTE la informacion del contexto de abajo.

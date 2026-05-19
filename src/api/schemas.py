@@ -25,6 +25,7 @@ class QueryRequest(BaseModel):
     proyecto_id: int
     mensaje: str
     usuario_telegram: str
+    historial: list[dict] = []
 
 
 class QueryResponse(BaseModel):

@@ -53,7 +53,7 @@ async def query_doc(request: QueryRequest):
             )
 
         # 3. Construir prompt
-        prompt, contexto_pobre = construir_prompt(request.mensaje, chunks)
+        prompt, contexto_pobre = construir_prompt(request.mensaje, chunks, historial=request.historial)
 
         # 4. score como similitud (mayor = mejor)
         distancia = chunks[0].score
